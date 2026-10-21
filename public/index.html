@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Contract Auditor (Free AI)</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; background: #111; color: #eee; }
+        textarea { width: 100%; height: 200px; background: #1e1e1e; color: #d4d4d4; border: 1px solid #333; padding: 1rem; font-family: monospace; border-radius: 6px; }
+        button { background: #2ea043; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 1rem; }
+        button:disabled { background: #444; }
+        pre { background: #1e1e1e; padding: 1rem; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; border: 1px solid #333; }
+        .provider { color: #58a6ff; font-weight: bold; }
+        .error { color: #f85149; }
+        .success { color: #2ea043; }
+        .section { margin-top: 2rem; border-top: 1px solid #333; padding-top: 1rem; }
+    </style>
+</head>
+<body>
+    <h1>Аудит смарт-контрактов</h1>
+    <p>Вставьте Solidity-код. Аудит выполняется через Slither + бесплатные нейросети (OpenRouter, Groq, GitHub Models).</p>
+
+    <textarea id="codeInput" placeholder="// Вставьте код контракта сюда&#10;pragma solidity ^0.8.0;&#10;contract Test { ... }"></textarea>
+    <button id="auditBtn" onclick="startAudit()">Запустить аудит</button>
+
+    <div id="output" class="section"></div>
+
+    <script>
+        async function startAudit() {
+            const code = document.getElementById('codeInput').value;
+            const btn = document.getElementById('auditBtn');
+            const out = document.getElementById('output');
+
+            if (code.length < 50) {
+                out.innerHTML = '<p class="error">Код слишком короткий.</p>';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Анализ... (может занять до 30 сек)';
+            out.innerHTML = '<p>Отправка в Slither и нейросети...</p>';
+
+            try {
+                const resp = await fetch('/api/audit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) throw new Error(data.error || 'Ошибка сервера');
+
+                let html = '';
+
+                // Slither
+                html += `<h3>1. Статический анализ (Slither)</h3>`;
+                if (data.slither.findings && data.slither.findings.length > 0) {
+                    html += `<pre>${JSON.stringify(data.slither.findings, null, 2)}</pre>`;
+                } else {
+                    html += `<p>${data.slither.note || 'Slither не выявил проблем или отключен.'}</p>`;
+                }
+
+                // AI
+                html += `<h3>2. Аудит нейросети</h3>`;
+                if (data.ai.success) {
+                    html += `<p class="provider">Провайдер: ${data.ai.provider} / Модель: ${data.ai.model}</p>`;
+                    html += `<pre>${data.ai.text}</pre>`;
+                } else {
+                    html += `<p class="error">Не удалось получить ответ от нейросетей.</p>`;
+                    html += `<pre>${JSON.stringify(data.ai.errors, null, 2)}</pre>`;
+                }
+
+                out.innerHTML = html;
+            } catch (e) {
+                out.innerHTML = `<p class="error">Ошибка: ${e.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Запустить аудит';
+            }
+        }
+    </script>
+</body>
+</html>
